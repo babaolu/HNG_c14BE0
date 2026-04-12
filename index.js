@@ -27,7 +27,7 @@ app.get('/', async (req, res) => {
     data.sample_size = data.count;
     delete data.count;
 
-    res.status(200).json(data);
+    res.status(200).json({status: "success", data});
   } catch (err) {
     res.status(502).json({status: 502, message: "Bad Gateway"});
   }
