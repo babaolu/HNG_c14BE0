@@ -5,7 +5,7 @@ const port = 3000;
 
 app.use(cors())
 
-app.get('/api/classify', async (req, res) => {
+app.get('/', async (req, res) => {
   const name = req.query.name;
   if (!name) {
     return res.status(400).json({status: 400, message: "Bad Request"});
