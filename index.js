@@ -5,7 +5,15 @@ const port = 3000;
 
 app.use(cors())
 
-app.get('/', async (req, res) => {
+app.get('/api', (req, res) => {
+  res.status(200).json({
+    message: "HNG14 Stage 1",
+    track: "DevOps",
+    username: "ItunZ"
+  });
+});
+
+app.get('/api/classify', async (req, res) => {
   const name = req.query.name;
   if (!name) {
     return res.status(400).json({status: 400, message: "Bad Request"});
@@ -35,5 +43,5 @@ app.get('/', async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`)
-})
+});
 
