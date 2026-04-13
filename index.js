@@ -7,7 +7,7 @@ app.use(cors())
 
 app.get('/api', (req, res) => {
   res.status(200).json({
-    message: "HNG14 Stage 1",
+    message: "HNG14 Stage 0",
     track: "DevOps",
     username: "ItunZ"
   });
