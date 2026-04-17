@@ -109,8 +109,8 @@ app.post('/api/profiles', async (req, res) => {
     created_at : new Date().toISOString(),
   };
 
-  await client.json.set(`profile:${id}`, '$', data)
-  await client.set(`names:${name}`, id);    
+  await client.json.set(`profile:${data.id}`, '$', data)
+  await client.set(`names:${data.name}`, id);    
 
   res.status(201).json({status: "success", data});
 });
