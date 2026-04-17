@@ -42,7 +42,8 @@ app.post('/api/profiles', async (req, res) => {
   // -- Return existing profile ----------------------------------------------
   const existingId = await client.get(`names:${name}`);
   if (existingId) {
-    const existing = await client.json.get(`profile:${existingId}`);
+    const raw = await client.get(`profile:${existingId}`);
+    const existing = raw ? JSON.parse(raw) : null;
     return res.status(200).json({status: 'success', message: 'Profile already exists', data: existing});
   }
 
@@ -109,8 +110,8 @@ app.post('/api/profiles', async (req, res) => {
     created_at : new Date().toISOString(),
   };
 
-  await client.json.set(`profile:${data.id}`, '$', data)
-  await client.set(`names:${data.name}`, id);    
+  await client.json.set(`profile:${data.id}`, JSON.stringify(data));
+  await client.set(`names:${data.name}`, data.id);    
 
   res.status(201).json({status: "success", data});
 });
