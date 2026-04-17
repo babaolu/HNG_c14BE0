@@ -22,7 +22,7 @@ function getAgeGroup(age) {
 
 app.get('/api', (req, res) => {
   res.status(200).json({
-    message: "HNG14 Stage 0",
+    message: "HNG14 Stage 1",
     track: "DevOps",
     username: "ItunZ"
   });
@@ -42,7 +42,7 @@ app.post('/api/profiles', async (req, res) => {
   // -- Return existing profile ----------------------------------------------
   const existingId = await client.get(`names:${name}`);
   if (existingId) {
-    const raw = await client.get(`profile:${existingId}`);
+    const raw = await client.get(`profiles:${existingId}`);
     const existing = raw ? JSON.parse(raw) : null;
     return res.status(200).json({status: 'success', message: 'Profile already exists', data: existing});
   }
@@ -61,9 +61,7 @@ app.post('/api/profiles', async (req, res) => {
     if (!nRes.ok) throw new Error('Nationalize');
  
     [gender, age, nationality] = await Promise.all([
-      gRes.json(),
-      aRes.json(),
-      nRes.json(),
+      gRes.json(), aRes.json(), nRes.json(),
     ]);
   } catch (err) {
     const api = err.message || 'upstream';
@@ -110,8 +108,9 @@ app.post('/api/profiles', async (req, res) => {
     created_at : new Date().toISOString(),
   };
 
-  await client.json.set(`profile:${data.id}`, JSON.stringify(data));
-  await client.set(`names:${data.name}`, data.id);    
+  await client.set(`profiles:${data.id}`, JSON.stringify(data));
+  await client.set(`names:${data.name}`, data.id);
+  await client.sAdd('names', data.name);
 
   res.status(201).json({status: "success", data});
 });
@@ -125,13 +124,69 @@ app.get('/api/profiles/:id', async (req, res) => {
     return res.status(404).json({ status: 'error', message: 'Profile not found' });
   }
  
-  const profile = await client.json.get(`profile:${id}`);
-  if (!profile) {
+  const raw = await client.get(`profiles:${id}`);
+  console.log("Raw:", raw);
+  if (!raw) {
     return res.status(404).json({ status: 'error', message: 'Profile not found' });
   }
-  profile.id = id;
+  const profile = raw ? JSON.parse(raw) : null;
  
   return res.status(200).json({ status: 'success', data: profile });
+});
+
+app.get('/api/profiles', async (req, res) => {
+  const { gender, country_id, age_group } = req.query;
+ 
+  const names = await client.sMembers('names');
+  if (!names) {
+    return res.status(404).json({ status: 'error', message: 'No profiles found' });
+  }
+
+  let profiles = await Promise.all(
+  names.map(async (name) => {
+    const existingId = await client.get(`names:${name}`);
+    if (!existingId) return null;
+
+    const raw = await client.get(`profiles:${existingId}`); // also fix typo: profile not profiles
+    const profile = raw ? JSON.parse(raw) : null;
+    if (!profile) return null;
+    
+    if (gender && gender !== profile.gender) return null;
+    if (country_id && country_id !== profile.country_id) return null;
+    if (age_group && age_group !== profile.age_group) return null;
+
+    let extract = {
+      id : profile.id, name : profile.name,
+      age : profile.age, gender : profile.gender,
+      country_id : profile.country_id, age_group : profile.age_group,
+    };
+
+    return extract;
+  })
+);
+
+  profiles = profiles.filter(Boolean);
+
+  return res.status(200).json({ status: 'success', count: profiles.length, data: profiles });
+});
+
+app.delete('/api/profiles/:id', async (req, res) => {
+  const { id } = req.params;
+ 
+  // Basic UUID format guard (prevents Redis noise from garbage input)
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRe.test(id)) return res.status(404).json({ status: 'error', message: 'Profile not found' });
+
+  const raw = await client.get(`profiles:${id}`);
+  if (!raw) return res.status(404).json({ status: 'error', message: 'Profile not found' });
+
+  const profile = JSON.parse(raw);
+
+  await client.del(`profiles:${id}`);
+  await client.del(`names:${profile.name}`);
+  await client.sRem('names', profile.name);
+
+  return res.status(204).end();
 });
 
 app.listen(port, () => {
