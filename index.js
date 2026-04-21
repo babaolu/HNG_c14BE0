@@ -1,14 +1,29 @@
 import express from 'express';
 import cors from 'cors';
 import { uuidv7 } from "uuidv7";
-import { createClient } from 'redis';
+import postgres from 'postgres';
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
-const client = createClient();
-client.on('error', err => console.log('Redis Client Error', err));
-await client.connect();
+const sql = postgres(process.env.DATABASE_URL || 'postgres://localhost:5432/profiles');
+
+await sql`
+  CREATE TABLE IF NOT EXISTS profiles (
+    id                  TEXT        PRIMARY KEY,
+    name                VARCHAR     NOT NULL UNIQUE,
+    gender              VARCHAR     NOT NULL,
+    gender_probability  FLOAT       NOT NULL,
+    age                 INT         NOT NULL,
+    age_group           VARCHAR     NOT NULL,
+    country_id          VARCHAR(2)  NOT NULL,
+    country_name        VARCHAR     NOT NULL,
+    country_probability FLOAT       NOT NULL,
+    created_at          TIMESTAMP   NOT NULL DEFAULT now()
+  )
+`;
+
+const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
 
 app.use(cors())
 app.use(express.json())
@@ -40,10 +55,8 @@ app.post('/api/profiles', async (req, res) => {
   name = name.trim().toLowerCase();
 
   // -- Return existing profile ----------------------------------------------
-  const existingId = await client.get(`names:${name}`);
-  if (existingId) {
-    const raw = await client.get(`profiles:${existingId}`);
-    const existing = raw ? JSON.parse(raw) : null;
+  const [existing] = await sql`SELECT * FROM profiles WHERE name = ${name}`;
+  if (existing) {
     return res.status(200).json({status: 'success', message: 'Profile already exists', data: existing});
   }
 
@@ -100,17 +113,17 @@ app.post('/api/profiles', async (req, res) => {
     name, 
     gender : gender.gender,
     gender_probability : gender.probability,
-    sample_size : gender.count,
     age : age.age,
     age_group : getAgeGroup(age.age),
     country_id : country.country_id,
+    country_name : regionNames.of(country.country_id) ?? country.country_id,
     country_probability : country.probability,
     created_at : new Date().toISOString(),
   };
 
-  await client.set(`profiles:${data.id}`, JSON.stringify(data));
-  await client.set(`names:${data.name}`, data.id);
-  await client.sAdd('names', data.name);
+  await sql`
+    INSERT INTO profiles ${sql(data, 'id','name','gender','gender_probability','age','age_group','country_id','country_name','country_probability','created_at')}
+  `;
 
   res.status(201).json({status: "success", data});
 });
@@ -124,12 +137,11 @@ app.get('/api/profiles/:id', async (req, res) => {
     return res.status(404).json({ status: 'error', message: 'Profile not found' });
   }
  
-  const raw = await client.get(`profiles:${id}`);
-  console.log("Raw:", raw);
-  if (!raw) {
+  const raw = await sql`SELECT * FROM profiles WHERE id = ${id}`;
+  if (!raw.length) {
     return res.status(404).json({ status: 'error', message: 'Profile not found' });
   }
-  const profile = raw ? JSON.parse(raw) : null;
+  const profile = raw[0];
  
   return res.status(200).json({ status: 'success', data: profile });
 });
@@ -137,35 +149,13 @@ app.get('/api/profiles/:id', async (req, res) => {
 app.get('/api/profiles', async (req, res) => {
   const { gender, country_id, age_group } = req.query;
  
-  const names = await client.sMembers('names');
-  if (!names) {
-    return res.status(404).json({ status: 'error', message: 'No profiles found' });
-  }
-
-  let profiles = await Promise.all(
-  names.map(async (name) => {
-    const existingId = await client.get(`names:${name}`);
-    if (!existingId) return null;
-
-    const raw = await client.get(`profiles:${existingId}`); // also fix typo: profile not profiles
-    const profile = raw ? JSON.parse(raw) : null;
-    if (!profile) return null;
-    
-    if (gender && gender !== profile.gender) return null;
-    if (country_id && country_id !== profile.country_id) return null;
-    if (age_group && age_group !== profile.age_group) return null;
-
-    let extract = {
-      id : profile.id, name : profile.name,
-      age : profile.age, gender : profile.gender,
-      country_id : profile.country_id, age_group : profile.age_group,
-    };
-
-    return extract;
-  })
-);
-
-  profiles = profiles.filter(Boolean);
+  const profiles = await sql`
+    SELECT id, name, age, gender, age_group, country_id, country_name
+    FROM profiles
+    WHERE (${gender  ?? null}::text IS NULL OR gender     = ${gender  ?? null})
+      AND (${country_id ?? null}::text IS NULL OR country_id = ${country_id ?? null})
+      AND (${age_group ?? null}::text IS NULL OR age_group  = ${age_group ?? null})
+  `;
 
   return res.status(200).json({ status: 'success', count: profiles.length, data: profiles });
 });
@@ -177,14 +167,8 @@ app.delete('/api/profiles/:id', async (req, res) => {
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuidRe.test(id)) return res.status(404).json({ status: 'error', message: 'Profile not found' });
 
-  const raw = await client.get(`profiles:${id}`);
-  if (!raw) return res.status(404).json({ status: 'error', message: 'Profile not found' });
-
-  const profile = JSON.parse(raw);
-
-  await client.del(`profiles:${id}`);
-  await client.del(`names:${profile.name}`);
-  await client.sRem('names', profile.name);
+  const result = await sql`DELETE FROM profiles WHERE id = ${id} RETURNING id`;
+  if (!result.length) return res.status(404).json({ status: 'error', message: 'Profile not found' });
 
   return res.status(204).end();
 });

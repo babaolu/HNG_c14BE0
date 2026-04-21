@@ -8,7 +8,8 @@ A REST API that accepts a name and enriches it with predicted gender, age, and n
 
 - **Runtime**: Node.js (ESM)
 - **Framework**: Express.js
-- **Database**: Redis (plain strings + Sets — no RedisJSON module required)
+- **Database**: PostgreSQL
+- **DB client**: `postgres` (npm)
 - **ID generation**: UUIDv7
 
 ---
@@ -16,7 +17,7 @@ A REST API that accepts a name and enriches it with predicted gender, age, and n
 ## Prerequisites
 
 - Node.js v18+
-- Redis server running locally on the default port (`6379`)
+- PostgreSQL server (v14+) accessible via `DATABASE_URL`
 
 ---
 
@@ -30,14 +31,17 @@ cd <your-repo-folder>
 # 2. Install dependencies
 npm install
 
-# 3. Start Redis (if not already running)
-sudo systemctl start redis
+# 3. Create a PostgreSQL database
+createdb profiles
 
-# 4. Run the server
-node server.js
+# 4. Set the connection string (defaults to postgres://localhost:5432/profiles)
+export DATABASE_URL=postgres://user:password@localhost:5432/profiles
+
+# 5. Run the server (the table is created automatically on first start)
+node index.js
 ```
 
-The server starts on **http://localhost:3000**.
+The server starts on **http://localhost:3000** (override with `PORT` env var).
 
 > Make sure your `package.json` includes `"type": "module"` since the project uses ESM imports.
 
@@ -191,7 +195,7 @@ Fetches a single profile by its UUID.
 
 ### `DELETE /api/profiles/:id`
 
-Deletes a profile by its UUID. Also removes its name index entry from Redis.
+Deletes a profile by its UUID.
 
 **Success**: `204 No Content` (empty body)
 
@@ -219,13 +223,24 @@ All errors follow this structure:
 
 ---
 
-## Redis Key Structure
+## Database Schema
 
-| Key pattern | Type | Stores |
-|-------------|------|--------|
-| `profiles:{uuid}` | String | Full profile JSON |
-| `names:{name}` | String | UUID for that name |
-| `names` | Set | All stored names (used for listing) |
+```sql
+CREATE TABLE IF NOT EXISTS profiles (
+  id                  TEXT        PRIMARY KEY,
+  name                VARCHAR     NOT NULL UNIQUE,
+  gender              VARCHAR     NOT NULL,
+  gender_probability  FLOAT       NOT NULL,
+  age                 INT         NOT NULL,
+  age_group           VARCHAR     NOT NULL,
+  country_id          VARCHAR(2)  NOT NULL,
+  country_name        VARCHAR     NOT NULL,
+  country_probability FLOAT       NOT NULL,
+  created_at          TIMESTAMP   NOT NULL DEFAULT now()
+);
+```
+
+The table is created automatically at server startup via `CREATE TABLE IF NOT EXISTS`.
 
 ---
 
@@ -237,7 +252,7 @@ All responses include `Access-Control-Allow-Origin: *`.
 
 ## Notes
 
-- This project uses **plain Redis** (no RedisJSON/Redis Stack module required). Profiles are stored as `JSON.stringify`'d strings and parsed on read.
 - All IDs are **UUID v7** (time-ordered).
 - All timestamps are **UTC ISO 8601**.
 - Names are normalised to lowercase before storage, so `Ella` and `ella` resolve to the same profile.
+- `country_name` is resolved from the ISO 3166-1 alpha-2 code via `Intl.DisplayNames` (no extra dependency required).
