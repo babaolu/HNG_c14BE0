@@ -3,7 +3,7 @@
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "redis": "^5.12.1",
+    "postgres": "^3.4.9",
     "uuidv7": "^1.2.1"
   }
 }
