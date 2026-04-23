@@ -1,4 +1,4 @@
-import { sql, countryMap } from './db.js'
+import { sql } from './db.js'
 
 function getAgeGroup(age) {
   if (age >= 0  && age <= 12) return 'child';
@@ -68,7 +68,7 @@ async function queryProfiles(filters = {}, sortBy = 'created_at', order = 'asc',
 }
  
 // ------- Natural language parser ----------------------------------------
-function parseNaturalLanguageQuery(q) {
+async function parseNaturalLanguageQuery(q) {
   const text    = q.toLowerCase().trim();
   const filters = {};
  
@@ -97,9 +97,17 @@ function parseNaturalLanguageQuery(q) {
   if (above)   filters.min_age = parseInt(above[1]);
   if (below)   filters.max_age = parseInt(below[1]);
   if (between) { filters.min_age = parseInt(between[1]); filters.max_age = parseInt(between[2]); }
- 
+
+  const countryRows = await sql`SELECT DISTINCT country_id, country_name FROM profiles`;
+
+  const countryMap = {};
+  for (const { country_id, country_name } of countryRows) {
+    countryMap[country_name.toLowerCase()] = country_id;
+  }
+
   // Sort by length descending so "south africa" matches before "africa"
   const sortedCountries = Object.keys(countryMap).sort((a, b) => b.length - a.length);
+  console.log("Country Map:", countryMap);
   for (const countryName of sortedCountries) {
     if (text.includes(countryName)) {
       filters.country_id = countryMap[countryName];

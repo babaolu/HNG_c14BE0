@@ -26,12 +26,5 @@ await sql`CREATE INDEX IF NOT EXISTS idx_created_at ON profiles(created_at)`;
 await sql`CREATE INDEX IF NOT EXISTS idx_gprob      ON profiles(gender_probability)`;
 await sql`CREATE INDEX IF NOT EXISTS idx_cprob      ON profiles(country_probability)`;
 
-// Run once at startup, after DB is ready
-const countryRows = await sql`SELECT DISTINCT country_id, country_name FROM profiles`;
 
-const countryMap = {};
-for (const { country_id, country_name } of countryRows) {
-  countryMap[country_name.toLowerCase()] = country_id;
-}
-
-export { sql, countryMap };
+export { sql };

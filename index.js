@@ -96,7 +96,7 @@ app.get('/api/profiles/search', async (req, res) => {
     return res.status(400).json({ status: 'error', message: 'Missing or empty query' });
   }
  
-  const filters = parseNaturalLanguageQuery(q);
+  const filters = await parseNaturalLanguageQuery(q);
  
   if (Object.keys(filters).length === 0) {
     return res.status(200).json({ status: 'error', message: 'Unable to interpret query' });
