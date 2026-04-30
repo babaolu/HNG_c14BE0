@@ -2,13 +2,12 @@ import { readFileSync } from 'fs';
 import postgres from 'postgres';
 import { uuidv7 } from 'uuidv7';
 
-const sql = postgres(process.env.DATABASE_URL || 'postgres://profiles:profiles@localhost:5432/profiles');
+const sql = postgres(process.env.DATABASE_URL || 'postgres://localhost:5432/profiles');
 
 const { profiles } = JSON.parse(readFileSync('./seed_profiles.json', 'utf8'));
 
 console.log(`Seeding ${profiles.length} profiles...`);
 
-// Batch in chunks of 100 to avoid hitting postgres parameter limits
 const CHUNK = 100;
 let inserted = 0;
 let skipped  = 0;
@@ -26,7 +25,7 @@ for (let i = 0; i < profiles.length; i += CHUNK) {
     country_id:          p.country_id,
     country_name:        p.country_name,
     country_probability: p.country_probability,
-    created_at:          p.created_at ?? new Date().toISOString(),
+    created_at:          new Date().toISOString(),
   }));
 
   const result = await sql`
